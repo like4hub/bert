@@ -12,7 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""BERT finetuning runner."""
+"""
+请先在pycharm中执行command + shift + - 折叠所有代码，浏览代码的骨架
+然后查看程序执行的入口，了解所需的基本参数。
+BERT finetuning runner."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -973,6 +976,7 @@ def main(_):
 
 
 if __name__ == "__main__":
+
   flags.mark_flag_as_required("data_dir")
   flags.mark_flag_as_required("task_name")
   flags.mark_flag_as_required("vocab_file")

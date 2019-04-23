@@ -12,7 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Run masked LM/next sentence masked_lm pre-training for BERT."""
+"""
+请先在pycharm中执行 command + shift + - 折叠所有代码块，查看代码的骨架
+然后打开最下方的执行入口，了解预训练所需要的三个基本配置。
+Run masked LM/next sentence masked_lm pre-training for BERT."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -487,6 +490,10 @@ def main(_):
 
 
 if __name__ == "__main__":
+  # 预训练只需要三个参数，
+  # 1、所用的语料 即input_file
+  # 2、bert的模型架构， 即bert_config_file
+  # 3、训练好的模型的保存记录
   flags.mark_flag_as_required("input_file")
   flags.mark_flag_as_required("bert_config_file")
   flags.mark_flag_as_required("output_dir")
