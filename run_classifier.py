@@ -976,7 +976,12 @@ def main(_):
 
 
 if __name__ == "__main__":
-
+  # 这里定义了run classifier所需要的最基本的五个参数
+  # 1、数据所在的目录
+  # 2、任务的名称
+  # 3、词典文件
+  # 4、bert配置文件
+  # 5、模型输出目录
   flags.mark_flag_as_required("data_dir")
   flags.mark_flag_as_required("task_name")
   flags.mark_flag_as_required("vocab_file")

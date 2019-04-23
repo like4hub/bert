@@ -1,0 +1,4 @@
+比较了bert和elmo  http://jalammar.github.io/illustrated-bert/
+使用非常多的图展示了transformer的计算过程 https://jalammar.github.io/illustrated-transformer/
+使用run_classifier的详细操作步骤 https://terrifyzhao.github.io/2018/11/29/%E4%BD%BF%E7%94%A8BERT%E5%81%9A%E4%B8%AD%E6%96%87%E6%96%87%E6%9C%AC%E7%9B%B8%E4%BC%BC%E5%BA%A6%E8%AE%A1%E7%AE%97.html
+收集了bert issues中的一些很好的问题  https://zhuanlan.zhihu.com/p/51298576
