@@ -595,7 +595,8 @@ def embedding_postprocessor(input_tensor,
             # we broadcast among the first dimensions, which is typically just
             # the batch size.
             # 下面的reshape操作，目的是将维度为[seq_length, width]的position embedding
-            # 扩展为[batch_size, seq_length, width]，以便和output直接相加
+            # 扩展为[1, seq_length, width]，以便和output直接相加
+            # 在相加的时候，第一个维度1会broadcast成batch_size
             position_broadcast_shape = []
             for _ in range(num_dims - 2):
                 position_broadcast_shape.append(1)
@@ -985,6 +986,7 @@ def transformer_model(input_tensor,
                         to_seq_length=seq_length)
                     attention_heads.append(attention_head)
 
+
                 attention_output = None
                 if len(attention_heads) == 1:
                     attention_output = attention_heads[0]
@@ -1005,6 +1007,7 @@ def transformer_model(input_tensor,
                     attention_output = layer_norm(attention_output + layer_input)
 
             # The activation is only applied to the "intermediate" hidden layer.
+            # bottle necks
             with tf.variable_scope("intermediate"):
                 intermediate_output = tf.layers.dense(
                     attention_output,

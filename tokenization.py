@@ -25,6 +25,7 @@ import six
 import tensorflow as tf
 
 
+# 该方法检测
 def validate_case_matches_checkpoint(do_lower_case, init_checkpoint):
   """Checks whether the casing config is consistent with the checkpoint name."""
 

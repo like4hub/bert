@@ -786,6 +786,10 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
 def main(_):
   tf.logging.set_verbosity(tf.logging.INFO)
 
+# processor的目的就是从指定目录下，加载解析出 train  dev  test数据
+# 每条数据都被封装成InputExample对象
+# InputExample这层封装很优雅，轻松地为后续的处理提供了一个统一的数据抽象
+# 值得学习。
   processors = {
       "cola": ColaProcessor,
       "mnli": MnliProcessor,
@@ -793,6 +797,8 @@ def main(_):
       "xnli": XnliProcessor,
   }
 
+  # 因为预训练的model有大小写敏感和不敏感两种
+  # do_lower_case为true时
   tokenization.validate_case_matches_checkpoint(FLAGS.do_lower_case,
                                                 FLAGS.init_checkpoint)
 
