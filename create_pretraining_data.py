@@ -14,6 +14,13 @@
 # limitations under the License.
 """Create masked LM/next sentence masked_lm TF examples for BERT."""
 
+'''  ****************提示****************
+先看TrainingInstance
+
+再看create_training_instances
+
+'''
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,48 +34,58 @@ flags = tf.flags
 
 FLAGS = flags.FLAGS
 
+# 输入文件
 flags.DEFINE_string("input_file", None,
                     "Input raw text file (or comma-separated list of files).")
-
+# 输出文件
 flags.DEFINE_string(
     "output_file", None,
     "Output TF example file (or comma-separated list of files).")
 
+# 词典文件
 flags.DEFINE_string("vocab_file", None,
                     "The vocabulary file that the BERT model was trained on.")
-
+# 是否全部转成小写
 flags.DEFINE_bool(
     "do_lower_case", True,
     "Whether to lower case the input text. Should be True for uncased "
     "models and False for cased models.")
-
+# 最大句子长度
 flags.DEFINE_integer("max_seq_length", 128, "Maximum sequence length.")
 
+# 每个句子最多可以mask并用来进行预测的字的数量
 flags.DEFINE_integer("max_predictions_per_seq", 20,
                      "Maximum number of masked LM predictions per sequence.")
 
+# 随机数的种子，用来帮助重现实验
 flags.DEFINE_integer("random_seed", 12345, "Random seed for data generation.")
 
+# 每个句子进行重复的次数，不同的重复中，使用不同的mask
 flags.DEFINE_integer(
     "dupe_factor", 10,
     "Number of times to duplicate the input data (with different masks).")
 
+# 每个字被mask的概率，这个是可以这样计算出来的 128 * 0.15 =  19.2
+# max_predictions_per_seq 恰好是20
+# 128 是 max_seq_length
 flags.DEFINE_float("masked_lm_prob", 0.15, "Masked LM probability.")
 
+# 创建一个短的句子的概率，目的是确保句子的长度的多样性
 flags.DEFINE_float(
     "short_seq_prob", 0.1,
     "Probability of creating sequences which are shorter than the "
     "maximum length.")
 
 
+# 一个训练实例，简单说就是一个句子对
 class TrainingInstance(object):
   """A single training instance (sentence pair)."""
 
   def __init__(self, tokens, segment_ids, masked_lm_positions, masked_lm_labels,
                is_random_next):
-    self.tokens = tokens
+    self.tokens = tokens   # tokens中存放着两个句子的token，中间用一个特殊的标记SEP分隔
     self.segment_ids = segment_ids
-    self.is_random_next = is_random_next
+    self.is_random_next = is_random_next  # 用来标记第二句话是不是第一句话的下一句
     self.masked_lm_positions = masked_lm_positions
     self.masked_lm_labels = masked_lm_labels
 
@@ -178,6 +195,8 @@ def create_training_instances(input_files, tokenizer, max_seq_length,
   """Create `TrainingInstance`s from raw text."""
   all_documents = [[]]
 
+  # 这里是对输入文件的格式的说明
+  # 简单讲，就是一句话占一行， 文档之间用空行分隔
   # Input file format:
   # (1) One sentence per line. These should ideally be actual sentences, not
   # entire paragraphs or arbitrary spans of text. (Because we use the
@@ -205,10 +224,10 @@ def create_training_instances(input_files, tokenizer, max_seq_length,
 
   vocab_words = list(tokenizer.vocab.keys())
   instances = []
-  for _ in range(dupe_factor):
+  for _ in range(dupe_factor):  # 这里是控制每个文档用来创建几次TrainInstance
     for document_index in range(len(all_documents)):
       instances.extend(
-          create_instances_from_document(
+          create_instances_from_document(   # 从一个文档中创建TrainInstance
               all_documents, document_index, max_seq_length, short_seq_prob,
               masked_lm_prob, max_predictions_per_seq, vocab_words, rng))
 
@@ -220,6 +239,13 @@ def create_instances_from_document(
     all_documents, document_index, max_seq_length, short_seq_prob,
     masked_lm_prob, max_predictions_per_seq, vocab_words, rng):
   """Creates `TrainingInstance`s for a single document."""
+  """
+  一个document可以认为是如下一个集合
+  [
+    [TOKEN, TOKEN,...]  #一个句子
+    ...
+  ]
+  """
   document = all_documents[document_index]
 
   # Account for [CLS], [SEP], [SEP]
@@ -232,6 +258,8 @@ def create_instances_from_document(
   # sequences to minimize the mismatch between pre-training and fine-tuning.
   # The `target_seq_length` is just a rough target however, whereas
   # `max_seq_length` is a hard limit.
+
+  # target_seq_length是应用于一个文档中所有的句子的
   target_seq_length = max_num_tokens
   if rng.random() < short_seq_prob:
     target_seq_length = rng.randint(2, max_num_tokens)
@@ -243,7 +271,11 @@ def create_instances_from_document(
   # input.
   instances = []
   current_chunk = []
-  current_length = 0
+  current_length = 0  # 当前遍历的几个句子的长度和，每次达到target_seq_length后，会清零一次重新累加。这几个句子就
+  # 存在current_chunk中。注意观察是如何从current_chunk中生成句子对的！
+  # 然后使用当前的几个句子随机拆分成两部分，就是所谓的TrainInstance中的sentence pair。这里注意的是，每个sentence都
+  # 可能是几个句子拼接在一起的。
+  #                         ***************不是真的简单的两个句子！！*****************
   i = 0
   while i < len(document):
     segment = document[i]

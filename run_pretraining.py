@@ -26,6 +26,12 @@ import modeling
 import optimization
 import tensorflow as tf
 
+
+'''
+*********看这个文件之前最好先看一下 create_pretrain_data.py文件。了解下TFRecord数据的内容，然后记下相关的
+向量的shape，否则，看model_fn时会比较难受。
+'''
+
 flags = tf.flags
 
 FLAGS = flags.FLAGS
@@ -109,10 +115,16 @@ flags.DEFINE_integer(
     "Only used if `use_tpu` is True. Total number of TPU cores to use.")
 
 
+# 看这个函数之前确保先看完input_fn_builder,不然， 里面的features参数会难以理解。
 def model_fn_builder(bert_config, init_checkpoint, learning_rate,
                      num_train_steps, num_warmup_steps, use_tpu,
                      use_one_hot_embeddings):
   """Returns `model_fn` closure for TPUEstimator."""
+
+  # model_fn方法的参数是固定死的，这是Estimator强制的规范。但是这里在预训练时，labels是不需要的，所以不用管。
+  # params是用来确定训练过程中的一些参数的。
+  # 但是因为model_fn是定义在model_fn_builder中的，所有的参数都在bert_config中，所以params也不需要了。
+  # Estimator有点过度设计了。
 
   def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
     """The `model_fn` for TPUEstimator."""
@@ -123,6 +135,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
     input_ids = features["input_ids"]
     input_mask = features["input_mask"]
+    # segment_ids就是type_token_ids, 关于后者，可以查看modeling.py文件中的注释
     segment_ids = features["segment_ids"]
     masked_lm_positions = features["masked_lm_positions"]
     masked_lm_ids = features["masked_lm_ids"]
@@ -240,6 +253,11 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
   return model_fn
 
 
+# 这个方法的几个参数，参见上面调用时传入的参数的名称
+# input_tensor就是transformer encoder最后一层的输出 shape是 (batch_size, seq_len, hidden_size)
+# output_weight 就是encoder一开始的 embedding table
+# positions,            label_ids,        label_weights
+# masked_lm_positions, masked_lm_ids, masked_lm_weights
 def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
                          label_ids, label_weights):
   """Get loss and log probs for the masked LM."""
@@ -335,6 +353,15 @@ def input_fn_builder(input_files,
     """The actual input function."""
     batch_size = params["batch_size"]
 
+    #下面的name_to_features可以这样理解，对每一个句子，作为一个样本，有很多features，
+    #最主要的就是每个字的id序列，也就是input_ids这个feature，其他的feature都是围绕这个句子产生的。
+    # input_mask是说这个句子中哪个字要被mask
+    # segment_ids是说这个句子的每个字所属的类别
+    # masked_lm_positions 是说这个句子中的哪个字是被mask，而且要预测的，它的长度是每句话最多允许的预测的字的数量
+    # masked_lm_ids 是说被mask掉需要预测的字的真实id
+    # masked_lm_weights 是说每个被预测的字，在计算loss时的权重
+    # next_sentence_labels 是说这句话真实的下一句话的id，这个id是如何生成的，还需要进一步确定
+
     name_to_features = {
         "input_ids":
             tf.FixedLenFeature([max_seq_length], tf.int64),
@@ -354,6 +381,9 @@ def input_fn_builder(input_files,
 
     # For training, we want a lot of parallel reading and shuffling.
     # For eval, we want no shuffling and parallel reading doesn't matter.
+    # 下面的input_files的格式是通过extract_features.py文件生成的特殊的格式，可以认为每一行就是一个序列化好的
+    # Example对象，一个Example对象包含了一句话的如上的features。Example是TFRecord使用的对象协议。
+    # tf.parse_single_example会对该对象进行解析。
     if is_training:
       d = tf.data.Dataset.from_tensor_slices(tf.constant(input_files))
       d = d.repeat()
@@ -416,6 +446,8 @@ def main(_):
 
   tf.gfile.MakeDirs(FLAGS.output_dir)
 
+  #获取所有的输入文件， 注意这里 input_file不是指的一个特定的文件，而是用逗号分隔的一系列的文件的模式
+  # tf.gfile.Glob函数会根据模式找出相应的文件名称
   input_files = []
   for input_pattern in FLAGS.input_file.split(","):
     input_files.extend(tf.gfile.Glob(input_pattern))
