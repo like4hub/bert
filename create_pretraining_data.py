@@ -106,6 +106,7 @@ class TrainingInstance(object):
     return self.__str__()
 
 
+# instances中每个元素就是TrainingInstance的一个实例
 def write_instance_to_example_files(instances, tokenizer, max_seq_length,
                                     max_predictions_per_seq, output_files):
   """Create TF example files from `TrainingInstance`s."""
@@ -122,6 +123,7 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     segment_ids = list(instance.segment_ids)
     assert len(input_ids) <= max_seq_length
 
+    # 对较短的句子进行padding，这里要留心的是，padding的token，相应的input_mask的值是0，而不再是1了。
     while len(input_ids) < max_seq_length:
       input_ids.append(0)
       input_mask.append(0)
@@ -135,6 +137,7 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     masked_lm_ids = tokenizer.convert_tokens_to_ids(instance.masked_lm_labels)
     masked_lm_weights = [1.0] * len(masked_lm_ids)
 
+    # 对mask token比较少的句子对进行padding，但是masked_lm_weights全部设为0，确保padding的这些不受影响。
     while len(masked_lm_positions) < max_predictions_per_seq:
       masked_lm_positions.append(0)
       masked_lm_ids.append(0)
@@ -158,6 +161,7 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
 
     total_written += 1
 
+    # 在log中记录前20条记录，以便进行检查
     if inst_index < 20:
       tf.logging.info("*** Example ***")
       tf.logging.info("tokens: %s" % " ".join(
@@ -281,6 +285,7 @@ def create_instances_from_document(
     segment = document[i]
     current_chunk.append(segment)
     current_length += len(segment)
+    # 这里建议把代码块先折叠起来，看清楚大体结构，再逐个展开，深入细节。
     if i == len(document) - 1 or current_length >= target_seq_length:
       if current_chunk:
         # `a_end` is how many segments from `current_chunk` go into the `A`
@@ -296,7 +301,9 @@ def create_instances_from_document(
         tokens_b = []
         # Random next
         is_random_next = False
+
         if len(current_chunk) == 1 or rng.random() < 0.5:
+          # 这里if的逻辑是随机选一句作为句子pair的第二句
           is_random_next = True
           target_b_length = target_seq_length - len(tokens_a)
 
@@ -304,6 +311,7 @@ def create_instances_from_document(
           # corpora. However, just to be careful, we try to make sure that
           # the random document is not the same as the document
           # we're processing.
+          # 先随机选一个不同的文档，然后从中选一句
           for _ in range(10):
             random_document_index = rng.randint(0, len(all_documents) - 1)
             if random_document_index != document_index:
@@ -317,6 +325,7 @@ def create_instances_from_document(
               break
           # We didn't actually use these segments so we "put them back" so
           # they don't go to waste.
+          # 这里因为b句是随机选的，那么current_chunk中原本要用来做b句的那几个句子要退回去，这个细节需要留心。
           num_unused_segments = len(current_chunk) - a_end
           i -= num_unused_segments
         # Actual next
@@ -332,18 +341,19 @@ def create_instances_from_document(
         tokens = []
         segment_ids = []
         tokens.append("[CLS]")
+        # 这里的a句对应的segment_ids全是0，也就是modeling文件中的type_token_ids，表示的是第一个句子
         segment_ids.append(0)
         for token in tokens_a:
           tokens.append(token)
           segment_ids.append(0)
 
-        tokens.append("[SEP]")
+        tokens.append("[SEP]")  # 两个句子之间用[SEP]来分隔
         segment_ids.append(0)
 
         for token in tokens_b:
           tokens.append(token)
-          segment_ids.append(1)
-        tokens.append("[SEP]")
+          segment_ids.append(1)  # b句的segment_ids全是1，表示的是第二句
+        tokens.append("[SEP]")   # 第二句的结尾也用一个[SEP]符号进行分隔
         segment_ids.append(1)
 
         (tokens, masked_lm_positions,
@@ -367,10 +377,12 @@ MaskedLmInstance = collections.namedtuple("MaskedLmInstance",
                                           ["index", "label"])
 
 
+# 这里的tokens是一个句子pair，句子之间用 [SEP]  分隔
 def create_masked_lm_predictions(tokens, masked_lm_prob,
                                  max_predictions_per_seq, vocab_words, rng):
   """Creates the predictions for the masked LM objective."""
 
+  #存储所有可用来的mask的token的index，
   cand_indexes = []
   for (i, token) in enumerate(tokens):
     if token == "[CLS]" or token == "[SEP]":
@@ -381,10 +393,11 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
 
   output_tokens = list(tokens)
 
+  # 确定这个句子pair要mask的token的数量
   num_to_predict = min(max_predictions_per_seq,
                        max(1, int(round(len(tokens) * masked_lm_prob))))
 
-  masked_lms = []
+  masked_lms = []  # 存储要mask的的token的index
   covered_indexes = set()
   for index in cand_indexes:
     if len(masked_lms) >= num_to_predict:
@@ -405,6 +418,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
       else:
         masked_token = vocab_words[rng.randint(0, len(vocab_words) - 1)]
 
+    #这一步就是对要mask的token进行替换，masked_token的三种可能性见上面的逻辑
     output_tokens[index] = masked_token
 
     masked_lms.append(MaskedLmInstance(index=index, label=tokens[index]))
@@ -420,6 +434,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
   return (output_tokens, masked_lm_positions, masked_lm_labels)
 
 
+# 将两个句子的长度和限制在max_num_tokens的范围内
 def truncate_seq_pair(tokens_a, tokens_b, max_num_tokens, rng):
   """Truncates a pair of sequences to a maximum sequence length."""
   while True:
@@ -432,6 +447,7 @@ def truncate_seq_pair(tokens_a, tokens_b, max_num_tokens, rng):
 
     # We want to sometimes truncate from the front and sometimes from the
     # back to add more randomness and avoid biases.
+    # 这里将句子截短时，随机选择从前还是从后截断，以此避免引入bias。试问，自己来写的话，能不能注意到这一点？
     if rng.random() < 0.5:
       del trunc_tokens[0]
     else:

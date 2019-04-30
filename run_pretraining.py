@@ -126,6 +126,8 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
   # 但是因为model_fn是定义在model_fn_builder中的，所有的参数都在bert_config中，所以params也不需要了。
   # Estimator有点过度设计了。
 
+
+# features的具体来源请参见create_pretraining_data.py  148-155行
   def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
     """The `model_fn` for TPUEstimator."""
 
@@ -137,8 +139,8 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
     input_mask = features["input_mask"]
     # segment_ids就是type_token_ids, 关于后者，可以查看modeling.py文件中的注释
     segment_ids = features["segment_ids"]
-    masked_lm_positions = features["masked_lm_positions"]
-    masked_lm_ids = features["masked_lm_ids"]
+    masked_lm_positions = features["masked_lm_positions"]  # 参见create_pretrain_data.py第427行的代码
+    masked_lm_ids = features["masked_lm_ids"]   # 参见create_pretrain_data.py第427行的代码
     masked_lm_weights = features["masked_lm_weights"]
     next_sentence_labels = features["next_sentence_labels"]
 
@@ -291,10 +293,12 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
     one_hot_labels = tf.one_hot(
         label_ids, depth=bert_config.vocab_size, dtype=tf.float32)
 
+    # 这段英文注释是理解label_weights的关键
     # The `positions` tensor might be zero-padded (if the sequence is too
     # short to have the maximum number of predictions). The `label_weights`
     # tensor has a value of 1.0 for every real prediction and 0.0 for the
     # padding predictions.
+    # 这里per_example_loss 就是 -logP P是预测成label的概率
     per_example_loss = -tf.reduce_sum(log_probs * one_hot_labels, axis=[-1])
     numerator = tf.reduce_sum(label_weights * per_example_loss)
     denominator = tf.reduce_sum(label_weights) + 1e-5
@@ -326,6 +330,7 @@ def get_next_sentence_output(bert_config, input_tensor, labels):
     return (loss, per_example_loss, log_probs)
 
 
+# 该方法返回的是那些被mask的token，经过bert后的vectors
 def gather_indexes(sequence_tensor, positions):
   """Gathers the vectors at the specific positions over a minibatch."""
   sequence_shape = modeling.get_shape_list(sequence_tensor, expected_rank=3)
@@ -335,6 +340,7 @@ def gather_indexes(sequence_tensor, positions):
 
   flat_offsets = tf.reshape(
       tf.range(0, batch_size, dtype=tf.int32) * seq_length, [-1, 1])
+  # flat_offsets是两维，第一维的大小就是batch_size, 第二维的大小是1，每个元素的值就是 第一维的index * seq_length
   flat_positions = tf.reshape(positions + flat_offsets, [-1])
   flat_sequence_tensor = tf.reshape(sequence_tensor,
                                     [batch_size * seq_length, width])
