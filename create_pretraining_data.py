@@ -84,10 +84,10 @@ class TrainingInstance(object):
   def __init__(self, tokens, segment_ids, masked_lm_positions, masked_lm_labels,
                is_random_next):
     self.tokens = tokens   # tokens中存放着两个句子的token，中间用一个特殊的标记SEP分隔
-    self.segment_ids = segment_ids
+    self.segment_ids = segment_ids  # 区分第一句话和第二句话，第一句1，第二句0
     self.is_random_next = is_random_next  # 用来标记第二句话是不是第一句话的下一句
     self.masked_lm_positions = masked_lm_positions
-    self.masked_lm_labels = masked_lm_labels
+    self.masked_lm_labels = masked_lm_labels #被mask的真实单词的ids
 
   def __str__(self):
     s = ""
@@ -117,13 +117,15 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
   writer_index = 0
 
   total_written = 0
+  # 这里的每个instance就是一个sentence pair
   for (inst_index, instance) in enumerate(instances):
     input_ids = tokenizer.convert_tokens_to_ids(instance.tokens)
     input_mask = [1] * len(input_ids)
     segment_ids = list(instance.segment_ids)
     assert len(input_ids) <= max_seq_length
 
-    # 对较短的句子进行padding，这里要留心的是，padding的token，相应的input_mask的值是0，而不再是1了。
+    # create_instance时，有十分之一的概率会选择较短的sentence pair，这里就是对较短的句子进行padding，
+    # 这里要留心的是，padding的token，相应的input_mask的值是0，而不再是1了。
     while len(input_ids) < max_seq_length:
       input_ids.append(0)
       input_mask.append(0)
@@ -246,7 +248,7 @@ def create_instances_from_document(
   """
   一个document可以认为是如下一个集合
   [
-    [TOKEN, TOKEN,...]  #一个句子
+    [TOKEN1, TOKEN2,...]  #一个句子
     ...
   ]
   """
@@ -282,10 +284,12 @@ def create_instances_from_document(
   #                         ***************不是真的简单的两个句子！！*****************
   i = 0
   while i < len(document):
-    segment = document[i]
+    segment = document[i]# segment 就是文档中的一句话，已经tokenize的
+    # 下面用到的sentence的概念才是训练数据中的sentence，可能是连续的多个segment。
     current_chunk.append(segment)
     current_length += len(segment)
     # 这里建议把代码块先折叠起来，看清楚大体结构，再逐个展开，深入细节。
+    # 这里生成TrainInstance时，用的是current_chunk中的句子，这些句子可能是大于两句的。
     if i == len(document) - 1 or current_length >= target_seq_length:
       if current_chunk:
         # `a_end` is how many segments from `current_chunk` go into the `A`
@@ -372,10 +376,10 @@ def create_instances_from_document(
 
   return instances
 
-
+# namedtuple可以理解成有限固定个key的map
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance",
                                           ["index", "label"])
-
+# MaskedLmInstance.index
 
 # 这里的tokens是一个句子pair，句子之间用 [SEP]  分隔
 def create_masked_lm_predictions(tokens, masked_lm_prob,
@@ -399,7 +403,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
 
   masked_lms = []  # 存储要mask的的token的index
   covered_indexes = set()
-  for index in cand_indexes:
+  for index in cand_indexes: # 因为cand_indexes已经做过shuffle，所以这里只需要顺序取就可以了。
     if len(masked_lms) >= num_to_predict:
       break
     if index in covered_indexes:
