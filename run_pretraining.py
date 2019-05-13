@@ -283,8 +283,11 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
         "output_bias",
         shape=[bert_config.vocab_size],
         initializer=tf.zeros_initializer())
+    # 下面要注意，output_weights就是modeling中的embedding table,其shape是 [vocab_size, hidden_size],下面相乘时做一下转置即可。
+    # 这样输出的logits的第二维就是 vocab_size
     logits = tf.matmul(input_tensor, output_weights, transpose_b=True)
     logits = tf.nn.bias_add(logits, output_bias)
+    # 注意这里将softmax和取log合在了一起
     log_probs = tf.nn.log_softmax(logits, axis=-1)
 
     label_ids = tf.reshape(label_ids, [-1])
@@ -300,6 +303,7 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
     # padding predictions.
     # 这里per_example_loss 就是 -logP P是预测成label的概率
     per_example_loss = -tf.reduce_sum(log_probs * one_hot_labels, axis=[-1])
+    # label_weights这里的作用是将padding出来的mask position的loss清零
     numerator = tf.reduce_sum(label_weights * per_example_loss)
     denominator = tf.reduce_sum(label_weights) + 1e-5
     loss = numerator / denominator
@@ -391,7 +395,9 @@ def input_fn_builder(input_files,
     # Example对象，一个Example对象包含了一句话的如上的features。Example是TFRecord使用的对象协议。
     # tf.parse_single_example会对该对象进行解析。
     if is_training:
+      #TODO  查清楚下面的具体函数
       d = tf.data.Dataset.from_tensor_slices(tf.constant(input_files))
+      #TODO 这里为什么要repeat
       d = d.repeat()
       d = d.shuffle(buffer_size=len(input_files))
 
